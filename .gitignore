@@ -49,6 +49,7 @@ datasets/
 runs/
 logs/
 wandb/
+result/
 
 # =========================
 # 临时文件
