@@ -5,9 +5,11 @@ from torchvision.transforms import ToTensor
 import numpy as np
 import os
 import gzip
+
+
 class GetDataSet():
     def __init__(self, dataset_name):#self = 当前这个 GetDataSet 实例。
-        self.dataset_name = dataset_name
+        self.dataset_name = str(dataset_name).lower()
 
         self.train_data = None
         self.train_label = None
@@ -18,8 +20,10 @@ class GetDataSet():
         self.test_data_size = None
 
         #只支持 MNIST（或字符串 mnist）
-        if self.dataset_name == 'MNIST' or self.dataset_name == 'mnist':
+        if self.dataset_name.startswith('mnist'):
             self.mnistDataDistribution()
+        else:
+            raise ValueError('Unsupported dataset: {}'.format(dataset_name))
 
     def mnistDataDistribution(self, ):
 
@@ -115,7 +119,3 @@ class GetDataSet():
         labels_one_hot = np.zeros((num_labels, num_classes))
         labels_one_hot.flat[index_offset + labels_dense.ravel()] = 1
         return labels_one_hot
-
-
-g = GetDataSet("MNIST")  #如果这样写，import这个类时就会自动调用__init__方法
-print(g.train_label)

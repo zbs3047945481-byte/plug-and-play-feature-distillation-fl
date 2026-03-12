@@ -6,23 +6,30 @@ from torch.utils.data import TensorDataset
 from torch.utils.data import DataLoader
 import copy
 from src.utils.metrics import Metrics
+from src.utils.tools import apply_feature_skew, build_client_feature_skews
 import torch.nn.functional as F
 criterion = F.cross_entropy
 
 
 class BaseFederated(object):
-    def __init__(self, options, dataset, clients_label, model=None, optimizer=None, name=''):
+    def __init__(self, options, dataset, clients_label, model=None, optimizer=None,
+                 model_builder=None, optimizer_builder=None, name=''):
         if model is not None and optimizer is not None:
             self.model = model
             self.optimizer = optimizer
         self.options = options
         self.dataset = dataset
         self.clients_label = clients_label
+        self.model_builder = model_builder
+        self.optimizer_builder = optimizer_builder
+        if self.model_builder is None or self.optimizer_builder is None:
+            raise ValueError('Both model_builder and optimizer_builder are required.')
         # 如果请求使用 GPU 但 CUDA 不可用，则使用 CPU
         self.gpu = options['gpu'] and torch.cuda.is_available()
         self.batch_size = options['batch_size']
         self.num_round = options['round_num']
         self.per_round_c_fraction = options['c_fraction']
+        self.client_feature_skews = build_client_feature_skews(len(self.clients_label), options)
         self.clients = self.setup_clients(self.dataset, self.clients_label)
         self.clients_num = len(self.clients)
         self.name = '_'.join([name, f'wn{int(self.per_round_c_fraction * self.clients_num)}',
@@ -68,8 +75,25 @@ class BaseFederated(object):
         train_label = dataset.train_label
         all_client = []
         for i in range(len(clients_label)):
-            local_client = BaseClient(self.options, i, TensorDataset(torch.tensor(train_data[self.clients_label[i]]),
-                                                torch.tensor(train_label[self.clients_label[i]])), self.model, self.optimizer)
+            local_indices = self.clients_label[i]
+            local_train_data = apply_feature_skew(train_data[local_indices], self.client_feature_skews[i])
+            local_train_label = train_label[local_indices]
+
+            local_model = self.model_builder()
+            if self.gpu:
+                local_model.cuda()
+            local_optimizer = self.optimizer_builder(local_model.parameters())
+            local_dataset = TensorDataset(
+                torch.tensor(local_train_data, dtype=torch.float32),
+                torch.tensor(local_train_label, dtype=torch.long),
+            )
+            local_client = BaseClient(
+                self.options,
+                i,
+                local_dataset,
+                local_model,
+                local_optimizer,
+            )
             all_client.append(local_client)
 
         return all_client
@@ -80,6 +104,7 @@ class BaseFederated(object):
         stats = []
         for i, client in enumerate(select_clients, start=1):
             client.set_model_parameters(self.latest_global_model)
+            client.set_learning_rate(self.optimizer.param_groups[0]['lr'])
             if use_fedfed:
                 client.set_global_sensitive_feature(self.global_sensitive_feature)
             update, stat = client.local_train()
@@ -158,8 +183,14 @@ class BaseFederated(object):
         self.set_model_parameters(self.latest_global_model)
         test_data = self.dataset.test_data
         test_label = self.dataset.test_label
-        print("testLabel", test_label)
-        testDataLoader = DataLoader(TensorDataset(torch.tensor(test_data), torch.tensor(test_label)), batch_size=10, shuffle=False)
+        testDataLoader = DataLoader(
+            TensorDataset(
+                torch.tensor(test_data, dtype=torch.float32),
+                torch.tensor(test_label, dtype=torch.long),
+            ),
+            batch_size=self.batch_size,
+            shuffle=False,
+        )
         test_loss = test_acc = test_total = 0.
         with torch.no_grad():
             for X, y in testDataLoader:
@@ -178,8 +209,6 @@ class BaseFederated(object):
                  'loss': test_loss / test_total,
                  'num_samples': test_total,}
         return stats
-
-
 
 
 

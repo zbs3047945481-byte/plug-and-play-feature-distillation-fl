@@ -1,5 +1,18 @@
 #定义并解析联邦学习实验的所有超参数，把它们整理成一个 dict（options），供整个系统使用。
 import argparse
+
+
+def str2bool(value):
+    if isinstance(value, bool):
+        return value
+    value = str(value).strip().lower()
+    if value in {'true', '1', 'yes', 'y'}:
+        return True
+    if value in {'false', '0', 'no', 'n'}:
+        return False
+    raise argparse.ArgumentTypeError('Boolean value expected.')
+
+
 #argparse 是 Python 的命令行参数解析库
 #它允许你定义命令行参数，并自动解析这些参数，将它们转换为 Python 字典。
 def input_options():
@@ -7,10 +20,10 @@ def input_options():
     #•	创建一个“参数解析器”
 	#•	后面所有 add_argument 都是在往这个解析器里注册参数
     # iid
-    parser.add_argument('-is_iid', type=bool, default=True, help='data distribution is iid.')
+    parser.add_argument('-is_iid', type=str2bool, default=False, help='data distribution is iid.')
     #是否使用 IID 数据分布
     
-    parser.add_argument('--dataset_name', type=str, default='mnist_dir_0.1', help='name of dataset.')
+    parser.add_argument('--dataset_name', type=str, default='mnist', help='name of dataset.')
     #数据集名称 / 数据划分方式标识
     #mnist_dir_0.1 很可能表示：MNIST、Dirichlet α=0.1（Non-IID 程度）
 
@@ -18,7 +31,7 @@ def input_options():
     #指定用哪个模型
     #if model_name == 'mnist_cnn': model = MnistCNN()
 
-    parser.add_argument('--gpu', type=bool, default=True, help='gpu id to use')
+    parser.add_argument('--gpu', type=str2bool, default=True, help='gpu id to use')
     #是否使用 GPU
     
     parser.add_argument('--round_num', type=int, default=301, help='number of round in comm')
@@ -52,8 +65,31 @@ def input_options():
     parser.add_argument('--weight_decay', help='weight_decay;', type=int, default=1)
     #权重衰减：防止过拟合
 
+    # ---------- Heterogeneity modeling ----------
+    parser.add_argument('--partition_strategy', type=str, default='dirichlet',
+                        choices=['iid', 'dirichlet'],
+                        help='Client data partition strategy.')
+    parser.add_argument('--dirichlet_alpha', type=float, default=0.3,
+                        help='Dirichlet alpha for label skew. Smaller means stronger heterogeneity.')
+    parser.add_argument('--min_samples_per_client', type=int, default=32,
+                        help='Ensure each client owns at least this many training samples.')
+    parser.add_argument('--enable_quantity_skew', type=str2bool, default=True,
+                        help='Whether to vary client dataset sizes.')
+    parser.add_argument('--quantity_skew_beta', type=float, default=0.5,
+                        help='Dirichlet beta for client quantity skew. Smaller means more imbalance.')
+    parser.add_argument('--enable_feature_skew', type=str2bool, default=True,
+                        help='Whether to apply client-specific feature shift/noise.')
+    parser.add_argument('--feature_noise_std', type=float, default=0.05,
+                        help='Std of client-specific additive Gaussian noise.')
+    parser.add_argument('--feature_scale_low', type=float, default=0.85,
+                        help='Lower bound of client-specific multiplicative scale.')
+    parser.add_argument('--feature_scale_high', type=float, default=1.15,
+                        help='Upper bound of client-specific multiplicative scale.')
+    parser.add_argument('--feature_bias_std', type=float, default=0.05,
+                        help='Std of client-specific additive bias.')
+
     # ---------- FedFed Feature Distillation Plugin (optional) ----------
-    parser.add_argument('--use_fedfed_plugin', type=lambda x: (str(x).lower() == 'true'), default=False,
+    parser.add_argument('--use_fedfed_plugin', type=str2bool, default=False,
                         help='Enable FedFed-style feature distillation plugin.')
     parser.add_argument('--fedfed_sensitive_dim', type=int, default=64,
                         help='Dimension of performance-sensitive feature z_s (shared).')
@@ -71,6 +107,8 @@ def input_options():
     
     options = args.__dict__
     #把参数对象转成字典
+    if options['is_iid']:
+        options['partition_strategy'] = 'iid'
 
     return options
 

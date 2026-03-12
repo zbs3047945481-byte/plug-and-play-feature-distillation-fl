@@ -41,6 +41,13 @@ class BaseClient():
         """Set global sensitive feature from server (for L_distill). None when plugin off or round 0."""
         self.global_sensitive_feature = global_sensitive_feature
 
+    def set_learning_rate(self, learning_rate):
+        for group in self.optimizer.param_groups:
+            group['lr'] = learning_rate
+        if self.local_optimizer is not None:
+            for group in self.local_optimizer.param_groups:
+                group['lr'] = learning_rate
+
     def get_model_parameters(self):
         state_dict = self.model.state_dict()
         return state_dict
@@ -74,9 +81,6 @@ class BaseClient():
     def local_update(self, local_dataset, options, ):
         use_plugin = self.use_fedfed_plugin
         optimizer = self.local_optimizer if use_plugin else self.optimizer
-        if use_plugin and self.local_optimizer is not None:
-            # Sync lr from server optimizer
-            self.local_optimizer.param_groups[0]['lr'] = self.optimizer.param_groups[0]['lr']
 
         localTrainDataLoader = DataLoader(local_dataset, batch_size=options['batch_size'], shuffle=True)
         self.model.train()
@@ -91,6 +95,7 @@ class BaseClient():
             for X, y in localTrainDataLoader:
                 if self.gpu:
                     X, y = X.cuda(), y.cuda()
+                optimizer.zero_grad()
                 if use_plugin and self.feature_split_module is not None:
                     pred, h = self.model(X, return_feature=True)
                     z_s, z_r = self.feature_split_module(h)
@@ -105,7 +110,6 @@ class BaseClient():
                         loss = loss_cls + lambda_d * loss_distill
                     loss.backward()
                     optimizer.step()
-                    optimizer.zero_grad()
                     with torch.no_grad():
                         z_s_list.append(z_s.detach())
                 else:
@@ -113,7 +117,6 @@ class BaseClient():
                     loss = criterion(pred, y)
                     loss.backward()
                     optimizer.step()
-                    optimizer.zero_grad()
 
                 _, predicted = torch.max(pred, 1)
                 correct = predicted.eq(y).sum().item()

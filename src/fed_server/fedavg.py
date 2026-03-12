@@ -16,11 +16,21 @@ class FedAvgTrainer(BaseFederated):
     def __init__(self, options, dataset, clients_label):
         #根据 options['model_name'] 选择模型
         model = choose_model(options)
+        model_builder = lambda: choose_model(options)
         self.move_model_to_gpu(model, options)
 
         #使用自定义Adam，本质等价于 torch.optim.Adam，这个优化器会被传给客户端用于本地训练
-        self.optimizer = MyAdam(model.parameters(), lr=options['lr'])
-        super(FedAvgTrainer, self).__init__(options, dataset, clients_label, model, self.optimizer,)
+        optimizer_builder = lambda params: MyAdam(params, lr=options['lr'])
+        self.optimizer = optimizer_builder(model.parameters())
+        super(FedAvgTrainer, self).__init__(
+            options,
+            dataset,
+            clients_label,
+            model,
+            self.optimizer,
+            model_builder=model_builder,
+            optimizer_builder=optimizer_builder,
+        )
         if options.get('use_fedfed_plugin', False):
             print('>>> FedFed Feature Distillation Plugin ENABLED (sensitive_dim={}, lambda_distill={})'.format(
                 options.get('fedfed_sensitive_dim', 64), options.get('fedfed_lambda_distill', 1.0)))
