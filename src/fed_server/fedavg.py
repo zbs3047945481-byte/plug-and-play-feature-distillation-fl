@@ -8,6 +8,7 @@ from torch import optim
 from src.optimizers.adam import MyAdam
 import numpy as np
 from src.models.models import choose_model
+from src.plugins import resolve_plugin_name
 
 class FedAvgTrainer(BaseFederated):
     #options：实验配置（超参数）
@@ -31,8 +32,10 @@ class FedAvgTrainer(BaseFederated):
             model_builder=model_builder,
             optimizer_builder=optimizer_builder,
         )
-        if options.get('use_fedfed_plugin', False):
-            print('>>> FedFed Feature Distillation Plugin ENABLED (sensitive_dim={}, lambda_distill={})'.format(
+        plugin_name = resolve_plugin_name(options)
+        if plugin_name is not None:
+            print('>>> Plugin ENABLED ({}, sensitive_dim={}, lambda_distill={})'.format(
+                plugin_name,
                 options.get('fedfed_sensitive_dim', 64), options.get('fedfed_lambda_distill', 1.0)))
 
     def train(self):

@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 import copy
 from src.utils.metrics import Metrics
 from src.utils.tools import apply_feature_skew, build_client_feature_skews
-from src.plugins import FedFedServerPlugin
+from src.plugins import build_server_plugin
 import torch.nn.functional as F
 criterion = F.cross_entropy
 
@@ -37,7 +37,7 @@ class BaseFederated(object):
                               f'tn{len(self.clients)}'])
         self.metrics = Metrics(options, self.clients, self.name)
         self.latest_global_model = copy.deepcopy(self.get_model_parameters())
-        self.server_plugin = FedFedServerPlugin(options, self.gpu) if options.get('use_fedfed_plugin', False) else None
+        self.server_plugin = build_server_plugin(options, self.gpu)
 
     @staticmethod
     def move_model_to_gpu(model, options):
@@ -105,7 +105,7 @@ class BaseFederated(object):
             client.set_model_parameters(self.latest_global_model)
             client.set_learning_rate(self.optimizer.param_groups[0]['lr'])
             if self.server_plugin is not None:
-                client.set_plugin_payload(self.server_plugin.get_client_payload())
+                client.set_plugin_payload(self.server_plugin.build_broadcast_payload())
             update, stat = client.local_train()
             local_model_paras_set.append(update)
             stats.append(stat)
@@ -135,7 +135,7 @@ class BaseFederated(object):
 
         # FedFed plugin: aggregate class-wise prototypes.
         if self.server_plugin is not None:
-            self.server_plugin.aggregate_client_updates(local_model_paras_set)
+            self.server_plugin.aggregate_client_payloads(local_model_paras_set)
         return averaged_paras
 
 
@@ -186,4 +186,3 @@ class BaseFederated(object):
                  'loss': test_loss / test_total,
                  'num_samples': test_total,}
         return stats
-

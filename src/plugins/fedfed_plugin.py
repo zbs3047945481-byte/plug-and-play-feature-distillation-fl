@@ -3,12 +3,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from src.models.feature_split import FeatureSplitModule
+from src.plugins.base import BaseClientPlugin, BaseServerPlugin
 
 
 mse_loss = nn.MSELoss()
 
 
-class FedFedClientPlugin:
+class FedFedClientPlugin(BaseClientPlugin):
     def __init__(self, options, model, gpu):
         self.options = options
         self.model = model
@@ -28,25 +29,13 @@ class FedFedClientPlugin:
             lr=options.get('lr', 0.001),
         )
 
-    def set_learning_rate(self, learning_rate):
+    def on_round_start(self, learning_rate, server_payload):
         for group in self.optimizer.param_groups:
             group['lr'] = learning_rate
-
-    def set_server_payload(self, payload):
-        self.global_prototypes = None if payload is None else payload.get('global_prototypes')
-
-    def train_mode(self):
+        self.global_prototypes = None if server_payload is None else server_payload.get('global_prototypes')
         self.feature_split_module.train()
-
-    def reset_round_state(self):
         self.prototype_sums = {}
         self.prototype_counts = {}
-
-    def zero_grad(self):
-        self.optimizer.zero_grad()
-
-    def step(self):
-        self.optimizer.step()
 
     def _clip_and_noise(self, feature):
         clip_norm = self.options.get('fedfed_clip_norm', 1.0)
@@ -78,9 +67,10 @@ class FedFedClientPlugin:
             return None
         return torch.stack(prototype_losses).mean()
 
-    def compute_loss(self, X, y):
+    def train_batch(self, X, y):
+        self.optimizer.zero_grad()
         pred, h = self.model(X, return_feature=True)
-        z_s, z_r = self.feature_split_module(h)
+        z_s, _ = self.feature_split_module(h)
         loss_cls = F.cross_entropy(pred, y)
         loss = loss_cls
 
@@ -90,7 +80,9 @@ class FedFedClientPlugin:
             loss = loss_cls + lambda_distill * loss_distill
 
         self._accumulate_batch_prototypes(z_s.detach(), y)
-        return pred, loss
+        loss.backward()
+        self.optimizer.step()
+        return pred, loss.detach()
 
     def _accumulate_batch_prototypes(self, z_s, y):
         for label in y.unique():
@@ -120,18 +112,18 @@ class FedFedClientPlugin:
         return {'prototypes': local_prototypes}
 
 
-class FedFedServerPlugin:
+class FedFedServerPlugin(BaseServerPlugin):
     def __init__(self, options, gpu):
         self.options = options
         self.gpu = gpu
         self.global_prototypes = None
 
-    def get_client_payload(self):
+    def build_broadcast_payload(self):
         if self.global_prototypes is None:
             return None
         return {'global_prototypes': self.global_prototypes}
 
-    def aggregate_client_updates(self, local_model_paras_set):
+    def aggregate_client_payloads(self, local_model_paras_set):
         prototype_sums = {}
         prototype_counts = {}
         for update in local_model_paras_set:

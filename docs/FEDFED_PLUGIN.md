@@ -18,6 +18,7 @@
 ## 2. 关键参数
 
 - `--use_fedfed_plugin true|false`
+- `--plugin_name none|fedfed_prototype`
 - `--fedfed_sensitive_dim`
 - `--fedfed_feature_dim`
 - `--fedfed_clip_norm`
@@ -95,11 +96,11 @@ global_prototypes = {
 ```bash
 python main.py \
   --dataset_name mnist \
+  --plugin_name fedfed_prototype \
   --partition_strategy dirichlet \
   --dirichlet_alpha 0.3 \
   --enable_quantity_skew true \
   --enable_feature_skew true \
-  --use_fedfed_plugin true \
   --fedfed_sensitive_dim 64 \
   --fedfed_feature_dim 512 \
   --fedfed_clip_norm 1.0 \

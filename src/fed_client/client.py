@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import time
 import torch
 import copy
-from src.plugins import FedFedClientPlugin
+from src.plugins import build_client_plugin
 criterion = F.cross_entropy
 
 
@@ -17,12 +17,11 @@ class BaseClient():
         self.gpu = options['gpu'] and torch.cuda.is_available()
         self.optimizer = optimizer
 
-        self.use_fedfed_plugin = options.get('use_fedfed_plugin', False)
-        self.plugin = FedFedClientPlugin(options, self.model, self.gpu) if self.use_fedfed_plugin else None
+        self.plugin = build_client_plugin(options, self.model, self.gpu)
+        self.plugin_payload = None
 
     def set_plugin_payload(self, payload):
-        if self.plugin is not None:
-            self.plugin.set_server_payload(payload)
+        self.plugin_payload = payload
 
     def set_global_sensitive_feature(self, global_sensitive_feature):
         """Backward-compatible alias for legacy server hook names."""
@@ -31,8 +30,6 @@ class BaseClient():
     def set_learning_rate(self, learning_rate):
         for group in self.optimizer.param_groups:
             group['lr'] = learning_rate
-        if self.plugin is not None:
-            self.plugin.set_learning_rate(learning_rate)
 
     def get_model_parameters(self):
         state_dict = self.model.state_dict()
@@ -56,13 +53,11 @@ class BaseClient():
 
     def local_update(self, local_dataset, options, ):
         use_plugin = self.plugin is not None
-        optimizer = self.plugin.optimizer if use_plugin else self.optimizer
 
         localTrainDataLoader = DataLoader(local_dataset, batch_size=options['batch_size'], shuffle=True)
         self.model.train()
         if use_plugin:
-            self.plugin.train_mode()
-            self.plugin.reset_round_state()
+            self.plugin.on_round_start(self.optimizer.param_groups[0]['lr'], self.plugin_payload)
 
         train_loss = train_acc = train_total = 0
 
@@ -72,16 +67,13 @@ class BaseClient():
                 if self.gpu:
                     X, y = X.cuda(), y.cuda()
                 if use_plugin:
-                    self.plugin.zero_grad()
-                    pred, loss = self.plugin.compute_loss(X, y)
-                    loss.backward()
-                    self.plugin.step()
+                    pred, loss = self.plugin.train_batch(X, y)
                 else:
-                    optimizer.zero_grad()
+                    self.optimizer.zero_grad()
                     pred = self.model(X)
                     loss = criterion(pred, y)
                     loss.backward()
-                    optimizer.step()
+                    self.optimizer.step()
 
                 _, predicted = torch.max(pred, 1)
                 correct = predicted.eq(y).sum().item()

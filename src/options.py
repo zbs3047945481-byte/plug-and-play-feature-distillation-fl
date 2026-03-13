@@ -91,6 +91,9 @@ def input_options():
     # ---------- FedFed Feature Distillation Plugin (optional) ----------
     parser.add_argument('--use_fedfed_plugin', type=str2bool, default=False,
                         help='Enable FedFed-style feature distillation plugin.')
+    parser.add_argument('--plugin_name', type=str, default='none',
+                        choices=['none', 'fedfed_prototype'],
+                        help='Generic plugin selector. Prefer this over algorithm-specific toggles for new code.')
     parser.add_argument('--fedfed_sensitive_dim', type=int, default=64,
                         help='Dimension of performance-sensitive feature z_s (shared).')
     parser.add_argument('--fedfed_feature_dim', type=int, default=512,
