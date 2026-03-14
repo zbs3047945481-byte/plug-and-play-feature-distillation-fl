@@ -29,6 +29,7 @@ dependencies:
       - fsspec==2025.3.0
       - jinja2==3.1.6
       - markupsafe==3.0.2
+      - matplotlib==3.10.1
       - mpmath==1.3.0
       - networkx==3.4.2
       - numpy==2.2.3

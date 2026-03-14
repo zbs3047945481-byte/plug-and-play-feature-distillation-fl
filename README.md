@@ -17,6 +17,10 @@ You can also disable tensorboardX
 ```
 pip install tensorboardX
 ```
+For experiment visualization, install matplotlib:
+```
+pip install matplotlib
+```
 Besides,
 
 2025-03-09 The conda environment is exported as environment.yml
@@ -28,6 +32,23 @@ you can enter the code below to run the federated learning demo.
 
 ```
 python main.py
+```
+
+After training, the project will automatically save:
+
+- `metrics.json`
+- `test_acc_curve.png`
+- `test_loss_curve.png`
+
+under the corresponding experiment folder in `result/`.
+
+To compare multiple experiments visually:
+
+```bash
+python plot_experiments.py \
+  --metrics path/to/exp1/metrics.json path/to/exp2/metrics.json \
+  --labels FedAvg FedFed \
+  --output_dir result/comparisons
 ```
 
 ## Acknowledgement
